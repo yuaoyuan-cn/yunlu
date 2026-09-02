@@ -1,0 +1,17 @@
+[Unit]
+Description=Yunlu HDMI Capture Recorder & Streamer
+After=graphical.target
+Wants=graphical.target
+
+[Service]
+Type=simple
+User=cat
+Environment=DISPLAY=:0
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+ExecStartPre=/bin/mkdir -p /home/cat/recordings
+ExecStart=/home/cat/yunlu/yunlu
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical.target

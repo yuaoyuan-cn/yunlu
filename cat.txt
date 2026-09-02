@@ -1,0 +1,336 @@
+==> 配置
+-- The CXX compiler identification is GNU 11.4.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/cat/yunlu/build
+==> 编译
+[  9%] Automatic MOC for target yunlu
+[  9%] Built target yunlu_autogen
+[ 36%] Building CXX object CMakeFiles/yunlu.dir/src/display/video_widget.cpp.o
+[ 36%] Building CXX object CMakeFiles/yunlu.dir/src/output/media_output.cpp.o
+[ 36%] Building CXX object CMakeFiles/yunlu.dir/src/display/video_renderer.cpp.o
+[ 45%] Building CXX object CMakeFiles/yunlu.dir/src/ui/main_window.cpp.o
+[ 54%] Building CXX object CMakeFiles/yunlu.dir/src/capture/hdmi_capture.cpp.o
+[ 81%] Building CXX object CMakeFiles/yunlu.dir/yunlu_autogen/mocs_compilation.cpp.o
+[ 81%] Building CXX object CMakeFiles/yunlu.dir/src/main.cpp.o
+[ 81%] Building CXX object CMakeFiles/yunlu.dir/src/encoder/vpu_encoder.cpp.o
+[ 90%] Building CXX object CMakeFiles/yunlu.dir/src/controller.cpp.o
+[100%] Linking CXX executable yunlu
+/usr/bin/ld: warning: libavcodec.so.58, needed by /lib/aarch64-linux-gnu/libchromaprint.so.1, may conflict with libavcodec.so.60
+/usr/bin/ld: warning: libavutil.so.56, needed by /lib/aarch64-linux-gnu/libchromaprint.so.1, may conflict with libavutil.so.58
+[100%] Built target yunlu
+==> 完成: build/yunlu
+cat@lubancat:~/yunlu$ pkill -9 yunlu; sleep 1
+cat@lubancat:~/yunlu$ export DISPLAY=:0
+cat@lubancat:~/yunlu$ timeout 180 ./build/yunlu > /tmp/yunlu.log 2>&1 &
+sleep 5
+[1] 3351
+cat@lubancat:~/yunlu$ sleep 15
+[1]+  退出 124              timeout 180 ./build/yunlu > /tmp/yunlu.log 2>&1
+cat@lubancat:~/yunlu$ cat /tmp/yunlu.log
+[encoder] opened h264_rkmpp_rkmpp 1920x1080 fps=30 bitrate=8000000
+[capture] started (device /dev/video0, waiting for HDMI signal)
+[capture] fmt: 0x3432564e 1920x1080
+[capture] streaming on 1920x1080 (swscale->NV12)
+[capture] stream stalled, full rebuild (#1)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3432564e 1920x1080
+[capture] streaming on 1920x1080 (swscale->NV12)
+[capture] DQBUF error: 无效的参数
+[capture] flow: seq=2 frames_in_2s=24 streaming_on width=1920x1080
+[capture] stream stalled, full rebuild (#2)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3432564e 1920x1080
+[capture] streaming on 1920x1080 (swscale->NV12)
+[capture] stream stalled, full rebuild (#3)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3432564e 1920x1080
+[capture] streaming on 1920x1080 (swscale->NV12)
+[capture] stream stalled, full rebuild (#4)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3432564e 1920x1080
+[capture] streaming on 1920x1080 (swscale->NV12)
+[capture] DQBUF error: 无效的参数
+[capture] flow: seq=5 frames_in_2s=77 streaming_on width=1920x1080
+[capture] stream stalled, full rebuild (#5)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3432564e 1920x1080
+[capture] streaming on 1920x1080 (swscale->NV12)
+[capture] stream stalled, full rebuild (#6)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3432564e 1920x1080
+[capture] streaming on 1920x1080 (swscale->NV12)
+[capture] DQBUF error: 无效的参数
+[capture] flow: seq=7 frames_in_2s=183 streaming_on width=1920x1080
+[capture] stream stalled, full rebuild (#7)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#8)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#9)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#10)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#11)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#12)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#13)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#14)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#15)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#16)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#17)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#18)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#19)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#20)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#21)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#22)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#23)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#24)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#25)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#26)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#27)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#28)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#29)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#30)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#31)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#32)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#33)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#34)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#35)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#36)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#37)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#38)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#39)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#40)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#41)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#42)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#43)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#44)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#45)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#46)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#47)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#48)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#49)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#50)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#51)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#52)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#53)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#54)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#55)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#56)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#57)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#58)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#59)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#60)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#61)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#62)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#63)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#64)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#65)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3231564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#66)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3432564e 3840x2160
+[capture] streaming on 3840x2160 (swscale->NV12)
+[capture] stream stalled, full rebuild (#67)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3432564e 1920x1080
+[capture] streaming on 1920x1080 (swscale->NV12)
+qt.qpa.xcb: QXcbConnection: XCB error: 146 (Unknown), sequence: 4679, resource id: 0, major code: 139 (Unknown), minor code: 20
+qt.qpa.xcb: QXcbConnection: XCB error: 146 (Unknown), sequence: 4684, resource id: 570, major code: 139 (Unknown), minor code: 20
+qt.qpa.xcb: QXcbConnection: XCB error: 146 (Unknown), sequence: 4699, resource id: 570, major code: 139 (Unknown), minor code: 20
+[capture] DQBUF error: 无效的参数
+[capture] flow: seq=68 frames_in_2s=49 streaming_on width=1920x1080
+[capture] stream stalled, full rebuild (#68)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3432564e 1920x1080
+[capture] streaming on 1920x1080 (swscale->NV12)
+[capture] stream stalled, full rebuild (#69)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3432564e 1920x1080
+[capture] streaming on 1920x1080 (swscale->NV12)
+[capture] DQBUF error: 无效的参数
+[capture] stream stalled, full rebuild (#70)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3432564e 1920x1080
+[capture] streaming on 1920x1080 (swscale->NV12)
+[capture] stream stalled, full rebuild (#71)
+[capture] streaming stopped (signal lost)
+[capture] fmt: 0x3432564e 1920x1080
+[capture] streaming on 1920x1080 (swscale->NV12)
+cat@lubancat:~/yunlu$
