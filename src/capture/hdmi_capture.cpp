@@ -439,9 +439,13 @@ void HdmiCapture::monitorRun() {
         // 触发条件：
         //   a) 本次开流 2s 后一帧都没取到（冷启动超时）；或
         //   b) 已 3s 未取到新帧（曾出过帧但中途卡死）。
+        // 注意：必须用"现在"重新采样时间，不能用本循环顶部采样的 now——
+        // 因为 grabFrames 刚把 lastFrameUs_ 更新到更晚时刻，用旧 now 相减会
+        // 下溢成巨大数，导致每次都不满足判据而误报 stalled(无限重建, 帧率雪崩)。
+        uint64_t nowNow = nowUs();
         bool needRebuild = false;
-        int64_t sinceStart = (int64_t)(now - streamStartedUs_);
-        if (lastFrameUs_ != 0 && (int64_t)(now - lastFrameUs_) > 3000000ull)
+        int64_t sinceStart = (int64_t)(nowNow - streamStartedUs_);
+        if (lastFrameUs_ != 0 && (int64_t)(nowNow - lastFrameUs_) > 3000000ull)
             needRebuild = true;
         else if (lastFrameUs_ == 0 && sinceStart > 2000000ull)
             needRebuild = true;
