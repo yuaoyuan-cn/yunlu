@@ -124,8 +124,6 @@ bool HdmiCapture::startCapStream() {
     srcFmt_ = chosen;
     width_  = w;
     height_ = h;
-    fprintf(stderr, "[capture] fmt: 0x%08x %dx%d\n", srcFmt_, w, h);
-
     // 重新读一次当前格式拿 bytesperline / sizeimage
     {
         struct v4l2_format f;
@@ -135,6 +133,8 @@ bool HdmiCapture::startCapStream() {
             srcBytesPerLine_ = f.fmt.pix_mp.plane_fmt[0].bytesperline;
     }
     if (srcBytesPerLine_ <= 0) srcBytesPerLine_ = w * 3;  // BGR3 兜底
+
+    fprintf(stderr, "[capture] fmt: 0x%08x %dx%d bpl=%d\n", srcFmt_, w, h, srcBytesPerLine_);
 
     if (!initSwsConversion()) return false;
 
@@ -303,12 +303,30 @@ void HdmiCapture::grabFrames(int timeoutMs) {
             uint8_t* dstY  = nullptr;
             uint8_t* dstUV = nullptr;
 
-            if (srcFmt_ == V4L2_PIX_FMT_NV12 || srcFmt_ == V4L2_PIX_FMT_NV16 || srcFmt_ == V4L2_PIX_FMT_NV24) {
-                // NV12/NV16/NV24 零拷贝：Y 在头，UV 紧跟其后
-                // 回调 onFrame_ 是同步的，消费者（编码器/预览）会在回调内拷贝数据
-                // QBUF 在回调之后执行，此时 mmap buffer 仍然有效
+            if (srcFmt_ == V4L2_PIX_FMT_NV12) {
+                // NV12 零拷贝
                 dstY  = (uint8_t*)src;
                 dstUV = (uint8_t*)src + (size_t)w * h;
+            } else if (srcFmt_ == V4L2_PIX_FMT_NV24) {
+                // NV24 (Y/UV 4:4:4) -> NV12 (Y/UV 4:2:0) 快速转换
+                // NV24 内存布局: Y(wh) + UV交错(2wh), 每行 UV 有 2w 字节
+                // NV12 内存布局: Y(wh) + UV交错(wh/2), 每行 UV 有 w 字节
+                // 转换: Y 直接拷贝, UV 隔行+隔列取样
+                if (!swsYuv_) continue;
+                dstY  = swsYuv_;
+                dstUV = swsYuv_ + (size_t)w * h;
+                const uint8_t* srcUV = src + (size_t)w * h;
+                memcpy(dstY, src, (size_t)w * h);
+                for (int i = 0; i < h / 2; i++) {
+                    // NV24 UV 行 i*2 的起始: srcUV + (i*2) * (2*w)
+                    const uint8_t* row = srcUV + (size_t)i * 4 * w;
+                    uint8_t* dst = dstUV + (size_t)i * w;
+                    // 每行取 w/2 个 UV 对 (每对占 NV24 中4字节: U₀V₀ U₁V₁)
+                    for (int j = 0; j < w / 2; j++) {
+                        dst[j * 2]     = row[j * 4];     // U
+                        dst[j * 2 + 1] = row[j * 4 + 1]; // V
+                    }
+                }
             } else {
                 // 其它格式统一经 swscale 转 NV12
                 if (!swsYuv_) continue;
