@@ -96,10 +96,12 @@ void VpuEncoder::pushFrame(const uint8_t* y, const uint8_t* uv,
     QItem it;
     it.width = width; it.height = height; it.ptsUs = ptsUs;
     it.linesizeY = lsy; it.linesizeUV = lsuv;
-    it.planar = (uint8_t*)malloc((size_t)lsy * height + (size_t)lsuv * (height / 2));
+    // 分配足够空间：UV 平面最大为 lsuv * height（NV24），最小为 lsuv * (height/2)（NV12）
+    size_t uvSize = (size_t)lsuv * height;
+    it.planar = (uint8_t*)malloc((size_t)lsy * height + uvSize);
     if (!it.planar) return;
     memcpy(it.planar, y, (size_t)lsy * height);
-    memcpy(it.planar + (size_t)lsy * height, uv, (size_t)lsuv * (height / 2));
+    memcpy(it.planar + (size_t)lsy * height, uv, uvSize);
     enqueue(it);
 }
 

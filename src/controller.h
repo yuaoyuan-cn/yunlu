@@ -42,6 +42,7 @@ public:
     uint64_t droppedFrames() const;
     int width() const { return width_; }
     int height() const { return height_; }
+    double captureFps() const { return captureFps_; }
 
 private:
     void onFrame(const VideoFrame& f);
@@ -54,6 +55,11 @@ private:
 
     int width_ = 1920, height_ = 1080, fps_ = 30;
     int bitrate_ = 8 * 1000 * 1000;
+    double captureFps_ = 0;
+
+    // FPS 计算
+    int64_t fpsFrameCount_ = 0;
+    int64_t fpsLastTimeUs_ = 0;
 
     // 采集状态（由采集后台线程更新，UI 轮询读取）
     mutable std::mutex stateMutex_;

@@ -89,7 +89,7 @@ bool HdmiCapture::startCapStream() {
     if (w <= 0 || h <= 0) return false;
 
     // 尝试 S_FMT 到我们首选(依次)格式；失败则接受驱动 G_FMT 现有格式
-    const uint32_t candidates[] = { V4L2_PIX_FMT_NV12, V4L2_PIX_FMT_BGR24 };
+    const uint32_t candidates[] = { V4L2_PIX_FMT_NV12, V4L2_PIX_FMT_NV16, V4L2_PIX_FMT_NV24, V4L2_PIX_FMT_BGR24 };
     uint32_t chosen = 0;
     for (uint32_t pf : candidates) {
         struct v4l2_format f;
@@ -291,6 +291,7 @@ void HdmiCapture::grabFrames(int timeoutMs) {
         if (xioctl(fd_, VIDIOC_DQBUF, &buf) != 0) {
             if (errno == EAGAIN) return;
             if (errno == EIO) { continue; }
+            if (errno == EINVAL) { return; }
             fprintf(stderr, "[capture] DQBUF error: %s\n", strerror(errno));
             return;
         }
@@ -298,19 +299,19 @@ void HdmiCapture::grabFrames(int timeoutMs) {
         if (onFrame_ && planes[0].bytesused > 0) {
             const uint8_t* src = (const uint8_t*)plane_map_[buf.index];
             int w = width_.load(), h = height_.load();
-            int ysz = w * h;
 
-            uint8_t* dstY  = swsYuv_;
-            uint8_t* dstUV = swsYuv_ + ysz;
+            uint8_t* dstY  = nullptr;
+            uint8_t* dstUV = nullptr;
 
-            if (srcFmt_ == V4L2_PIX_FMT_NV12) {
-                // 已是 NV12（连续单缓冲）：Y 在头，UV 紧跟其后
-                memcpy(dstY,  src, (size_t)w * h);
-                memcpy(dstUV, src + (size_t)w * h, (size_t)w * (h / 2));
+            if (srcFmt_ == V4L2_PIX_FMT_NV12 || srcFmt_ == V4L2_PIX_FMT_NV16 || srcFmt_ == V4L2_PIX_FMT_NV24) {
+                // NV12/NV16/NV24 零拷贝：Y 在头，UV 紧跟其后
+                // 回调 onFrame_ 是同步的，消费者（编码器/预览）会在回调内拷贝数据
+                // QBUF 在回调之后执行，此时 mmap buffer 仍然有效
+                dstY  = (uint8_t*)src;
+                dstUV = (uint8_t*)src + (size_t)w * h;
             } else {
-                // 其它格式统一经 swscale 转 NV12。
-                // 用 av_image_fill_linesizes 根据源像像格式得到各平面每行字节数，
-                // 并按连续单缓冲的平面偏移自动切分 Y/UV 平面（NV24/NV16 等多平面源）。
+                // 其它格式统一经 swscale 转 NV12
+                if (!swsYuv_) continue;
                 AVPixelFormat avsrc = srcToAvFmt(srcFmt_);
                 int  lsz[4] = {0,0,0,0};
                 int  nb = av_pix_fmt_count_planes(avsrc);
@@ -323,7 +324,6 @@ void HdmiCapture::grabFrames(int timeoutMs) {
 
                 const uint8_t* sdata[4]  = {0};
                 int            ss[4]     = {0};
-                // 单平面(打包)源：stride 用驱动 bytesperline（无则按 Y 平面大小估）
                 if (nb == 1) {
                     sdata[0] = src;
                     int stride = srcBytesPerLine_ > 0 ? srcBytesPerLine_ : lsz[0];
@@ -337,6 +337,8 @@ void HdmiCapture::grabFrames(int timeoutMs) {
                     }
                 }
 
+                dstY  = swsYuv_;
+                dstUV = swsYuv_ + (size_t)w * h;
                 uint8_t* ddata[2] = { dstY, dstUV };
                 int ds[2]         = { w, w };
                 sws_scale(sws_, sdata, ss, 0, h, ddata, ds);
@@ -367,10 +369,11 @@ void HdmiCapture::grabFrames(int timeoutMs) {
 void HdmiCapture::maybeLogFlow() {
     if (!streaming_.load()) return;
     uint64_t t = nowUs();
-    if (t - lastFlowLogUs_ >= 2000000) {
-        fprintf(stderr, "[capture] flow: seq=%d frames_in_2s=%lld streaming_on width=%dx%d\n",
-                reopenSeq_, (long long)framesThisWindow_,
-                width_.load(), height_.load());
+    if (t - lastFlowLogUs_ >= 1000000) {
+        double fps = framesThisWindow_ * 1000000.0 / (t - lastFlowLogUs_);
+        fprintf(stderr, "[capture] fps=%.1f frames_in_1s=%lld %dx%d fmt=0x%08x\n",
+                fps, (long long)framesThisWindow_,
+                width_.load(), height_.load(), srcFmt_);
         if (framesThisWindow_ == 0)
             zeroFrameWindows_++;
         else

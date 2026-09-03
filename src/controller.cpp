@@ -54,12 +54,34 @@ void Controller::stopVideo() {
 }
 
 void Controller::onFrame(const VideoFrame& f) {
-    // 1) 编码（仅当帧尺寸与编码器一致，尺寸变化时暂不编码避免错乱）
+    // FPS 计算
+    fpsFrameCount_++;
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    int64_t nowUs = (int64_t)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+    if (fpsLastTimeUs_ == 0) fpsLastTimeUs_ = nowUs;
+    if (nowUs - fpsLastTimeUs_ >= 1000000) {
+        captureFps_ = fpsFrameCount_ * 1000000.0 / (nowUs - fpsLastTimeUs_);
+        fpsFrameCount_ = 0;
+        fpsLastTimeUs_ = nowUs;
+    }
+
+    // 分辨率变化：仅记录日志，不重配编码器（避免线程竞态崩溃）
+    if (f.width != width_ || f.height != height_) {
+        static bool logged = false;
+        if (!logged) {
+            fprintf(stderr, "[controller] resolution mismatch: %dx%d vs encoder %dx%d, skipping encode\n",
+                    f.width, f.height, width_, height_);
+            logged = true;
+        }
+    }
+
+    // 1) 编码（仅当帧尺寸与编码器一致）
     if (encoder_->isOpen() && f.width == width_ && f.height == height_) {
         encoder_->pushFrame(f.y, f.uv, f.linesize_y, f.linesize_uv,
                             f.width, f.height, f.pts_us);
     }
-    // 2) 预览（预览随实际帧尺寸自适应）
+    // 2) 预览
     if (preview_)
         preview_->submitFrame(f);
 }

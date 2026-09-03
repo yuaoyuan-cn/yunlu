@@ -29,10 +29,10 @@ MainWindow::MainWindow(Controller* ctrl, QWidget* parent)
     connect(statusTimer_, &QTimer::timeout, this, &MainWindow::refreshStatus);
     statusTimer_->start(500);
 
-    // 以约 30fps 刷新视频预览
+    // 以约 60fps 刷新视频预览
     auto* paintTimer = new QTimer(this);
     connect(paintTimer, &QTimer::timeout, this, [this]{ video_->update(); });
-    paintTimer->start(33);
+    paintTimer->start(16);
 
     // 进入全屏
     showFullScreen();
@@ -190,6 +190,7 @@ void MainWindow::refreshStatus() {
         s += QStringLiteral(" 丢帧:") + QString::number(ctrl_->droppedFrames());
         s += QStringLiteral("   ") + QString::number(ctrl_->captureWidth()) + QStringLiteral("x")
              + QString::number(ctrl_->captureHeight());
+        s += QStringLiteral("  ") + QString::number(ctrl_->captureFps(), 'f', 1) + QStringLiteral("fps");
     } else {
         s += QStringLiteral(" 等待 HDMI 信号...");
     }
