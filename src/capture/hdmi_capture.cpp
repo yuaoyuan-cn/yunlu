@@ -18,6 +18,11 @@ extern "C" {
 #include <libavutil/mem.h>
 }
 
+#ifdef YUNLU_HAVE_RGA
+#include <rga/im2d.h>
+#include <rga/im2d_single.h>
+#endif
+
 namespace yunlu {
 
 namespace {
@@ -43,6 +48,29 @@ AVPixelFormat srcToAvFmt(uint32_t pf) {
         default:                 return AV_PIX_FMT_NONE;
     }
 }
+
+// 把 V4L2 fourcc 打成像 'NV12' 的字符串
+void fourccStr(uint32_t pf, char out[5]) {
+    out[0] = (char)(pf & 0xFF);
+    out[1] = (char)((pf >> 8) & 0xFF);
+    out[2] = (char)((pf >> 16) & 0xFF);
+    out[3] = (char)((pf >> 24) & 0xFF);
+    out[4] = '\0';
+}
+
+#ifdef YUNLU_HAVE_RGA
+// V4L2 像素格式 -> RGA 格式（用于硬件转换到 NV12）
+int rgaFmtFor(uint32_t pf) {
+    switch (pf) {
+        case V4L2_PIX_FMT_BGR24: return RK_FORMAT_BGR_888;
+        case V4L2_PIX_FMT_RGB24: return RK_FORMAT_RGB_888;
+        case V4L2_PIX_FMT_NV16:  return RK_FORMAT_YCbCr_422_SP;
+        case V4L2_PIX_FMT_NV24:  return RK_FORMAT_YCbCr_444_SP;
+        case V4L2_PIX_FMT_YUYV:  return RK_FORMAT_YUYV_422;
+        default:                 return -1;
+    }
+}
+#endif
 }
 
 HdmiCapture::HdmiCapture() = default;
@@ -134,7 +162,8 @@ bool HdmiCapture::startCapStream() {
     }
     if (srcBytesPerLine_ <= 0) srcBytesPerLine_ = w * 3;  // BGR3 兜底
 
-    fprintf(stderr, "[capture] fmt: 0x%08x %dx%d bpl=%d\n", srcFmt_, w, h, srcBytesPerLine_);
+    char fcc[5]; fourccStr(srcFmt_, fcc);
+    fprintf(stderr, "[capture] fmt: 0x%08x '%s' %dx%d bpl=%d\n", srcFmt_, fcc, w, h, srcBytesPerLine_);
 
     if (!initSwsConversion()) return false;
 
@@ -328,7 +357,27 @@ void HdmiCapture::grabFrames(int timeoutMs) {
                     }
                 }
             } else {
-                // 其它格式统一经 swscale 转 NV12
+                // 优先用 RGA 硬件转换（BGR3/RGB3/NV16/NV24 等 → NV12）
+#ifdef YUNLU_HAVE_RGA
+                int rf = rgaFmtFor(srcFmt_);
+                if (rf >= 0 && swsYuv_) {
+                    rga_buffer_t rs = wrapbuffer_virtualaddr((void*)src, w, h, rf);
+                    rga_buffer_t rd = wrapbuffer_virtualaddr(swsYuv_, w, h, RK_FORMAT_YCbCr_420_SP);
+                    IM_STATUS st = imcvtcolor(rs, rd, rf, RK_FORMAT_YCbCr_420_SP);
+                    if (st == IM_STATUS_SUCCESS) {
+                        dstY  = swsYuv_;
+                        dstUV = swsYuv_ + (size_t)w * h;
+                    } else {
+                        static bool rgaWarned = false;
+                        if (!rgaWarned) {
+                            fprintf(stderr, "[capture] RGA 转换失败 status=%d, 回退 swscale\n", (int)st);
+                            rgaWarned = true;
+                        }
+                    }
+                }
+#endif
+                if (!dstY) {
+                // swscale 兜底
                 if (!swsYuv_) continue;
                 AVPixelFormat avsrc = srcToAvFmt(srcFmt_);
                 int  lsz[4] = {0,0,0,0};
@@ -360,6 +409,7 @@ void HdmiCapture::grabFrames(int timeoutMs) {
                 uint8_t* ddata[2] = { dstY, dstUV };
                 int ds[2]         = { w, w };
                 sws_scale(sws_, sdata, ss, 0, h, ddata, ds);
+                }
             }
 
             VideoFrame fr;
@@ -389,9 +439,10 @@ void HdmiCapture::maybeLogFlow() {
     uint64_t t = nowUs();
     if (t - lastFlowLogUs_ >= 1000000) {
         double fps = framesThisWindow_ * 1000000.0 / (t - lastFlowLogUs_);
-        fprintf(stderr, "[capture] fps=%.1f frames_in_1s=%lld %dx%d fmt=0x%08x\n",
+        char fcc[5]; fourccStr(srcFmt_, fcc);
+        fprintf(stderr, "[capture] fps=%.1f frames_in_1s=%lld %dx%d fmt='%s'\n",
                 fps, (long long)framesThisWindow_,
-                width_.load(), height_.load(), srcFmt_);
+                width_.load(), height_.load(), fcc);
         if (framesThisWindow_ == 0)
             zeroFrameWindows_++;
         else

@@ -28,6 +28,15 @@ if(NOT FFMPEG_INCLUDE_DIR OR NOT AVCODEC_LIB)
     message(FATAL_ERROR "未找到 FFmpeg 头文件或 libavcodec.so。请先运行 scripts/link_ffmpeg.sh 创建符号链接。")
 endif()
 
+# RGA (Rockchip 2D 加速) 用于任意格式 -> NV12 的硬件转换
+find_path(RGA_INCLUDE_DIR rga/im2d.h PATHS /usr/include)
+find_library(RGA_LIB NAMES rga)
+if(RGA_INCLUDE_DIR AND RGA_LIB)
+    message(STATUS "Found librga: ${RGA_LIB} (include ${RGA_INCLUDE_DIR})")
+else()
+    message(WARNING "未找到 librga，格式转换将回退到软件 swscale")
+endif()
+
 add_executable(yunlu
     src/main.cpp
     src/common.h
@@ -52,10 +61,15 @@ target_link_libraries(yunlu PRIVATE
     Qt5::OpenGL
     ${AVCODEC_LIB} ${AVFORMAT_LIB} ${AVUTIL_LIB} ${AVFILTER_LIB}
     ${SWSCALE_LIB} ${SWRESAMPLE_LIB}
+    ${RGA_LIB}
     dl pthread m
 )
 
 target_include_directories(yunlu PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/config)
 target_include_directories(yunlu PRIVATE ${FFMPEG_INCLUDE_DIR})
+if(RGA_INCLUDE_DIR)
+    target_include_directories(yunlu PRIVATE ${RGA_INCLUDE_DIR})
+    target_compile_definitions(yunlu PRIVATE YUNLU_HAVE_RGA=1)
+endif()
 
 install(TARGETS yunlu RUNTIME DESTINATION bin)
