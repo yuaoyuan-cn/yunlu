@@ -1,15 +1,16 @@
 #include "main_window.h"
 
+#include <cstdio>
+
 #include <QVBoxLayout>
-#include <QHBoxLayout>
 #include <QPushButton>
 #include <QLabel>
-#include <QLineEdit>
-#include <QKeyEvent>
 #include <QResizeEvent>
+#include <QCloseEvent>
 #include <QApplication>
-#include <QStyle>
 #include <QDateTime>
+#include <QSettings>
+#include <QFile>
 
 #include "../display/video_widget.h"
 #include "../../config/settings.h"
@@ -22,6 +23,7 @@ namespace yunlu {
 
 MainWindow::MainWindow(Controller* ctrl, QWidget* parent)
     : QMainWindow(parent), ctrl_(ctrl) {
+    loadConfig();
     buildUi();
     ctrl_->setPreview(video_);
 
@@ -37,12 +39,32 @@ MainWindow::MainWindow(Controller* ctrl, QWidget* parent)
     // 进入全屏
     showFullScreen();
 
-    // 自动启动采集（使用 settings.h 中的配置）
+    // 自动启动采集（分辨率/帧率取 settings.h，码率取运行时配置文件）
     // 采集支持 HDMI 热插拔自动恢复：无信号也能正常启动并显示界面，
     // 接入信号后自动开始采集（格式由驱动/信号决定，统一转 NV12）。
     ctrl_->startCapture(settings::kCaptureDevice,
                         settings::kCaptureWidth, settings::kCaptureHeight,
-                        settings::kCaptureFps);
+                        settings::kCaptureFps, bitrate_);
+}
+
+void MainWindow::loadConfig() {
+    const QString path = QString::fromUtf8(settings::kConfigFile);
+    QSettings cfg(path, QSettings::IniFormat);
+
+    // 首次运行：生成默认配置文件，方便在设备上直接编辑
+    if (!QFile::exists(path)) {
+        cfg.setValue("stream/url", QString::fromUtf8(settings::kDefaultRtmpUrl));
+        cfg.setValue("stream/bitrate", settings::kBitrate);
+        cfg.sync();
+        fprintf(stderr, "[config] 已生成默认配置文件: %s\n", path.toUtf8().constData());
+    }
+
+    rtmpUrl_ = cfg.value("stream/url", QString::fromUtf8(settings::kDefaultRtmpUrl)).toString();
+    bitrate_ = cfg.value("stream/bitrate", settings::kBitrate).toInt();
+
+    fprintf(stderr, "[config] 文件: %s\n", path.toUtf8().constData());
+    fprintf(stderr, "[config] 推流地址: %s\n", rtmpUrl_.toUtf8().constData());
+    fprintf(stderr, "[config] 码率: %d bps\n", bitrate_);
 }
 
 void MainWindow::buildUi() {
@@ -50,17 +72,12 @@ void MainWindow::buildUi() {
 
     video_ = new VideoWidget(this);
 
-    // 状态栏（顶部悬浮信息）
-    stateLabel_ = new QLabel(this);
-    stateLabel_->setStyleSheet(
-        "background: rgba(0,0,0,160); color: #fff; padding: 6px 10px;"
-        "border-radius: 4px; font-size: 16px;");
-    stateLabel_->setText(QStringLiteral("等待 HDMI 信号..."));
-
+    // 状态栏（左上角悬浮信息，实时更新）
     statusLabel_ = new QLabel(this);
     statusLabel_->setStyleSheet(
         "background: rgba(0,0,0,160); color: #0f0; padding: 6px 10px;"
         "border-radius: 4px; font-size: 14px;");
+    statusLabel_->setText(QStringLiteral("等待 HDMI 信号..."));
 
     // 底部按钮条
     btnRec_ = new QPushButton(QStringLiteral("● 开始录制"), this);
@@ -77,26 +94,6 @@ void MainWindow::buildUi() {
         "QPushButton:pressed{background:#145aa8;}");
     connect(btnStream_, &QPushButton::clicked, this, &MainWindow::toggleStreaming);
 
-    urlEdit_ = new QLineEdit(this);
-    urlEdit_->setPlaceholderText(QStringLiteral("RTMP 地址 rtmp://..."));
-    urlEdit_->setFixedWidth(360);
-    urlEdit_->setStyleSheet("QLineEdit{background:rgba(0,0,0,150);color:#fff;"
-                            "border:1px solid #555;padding:6px;font-size:15px;}");
-    urlEdit_->setText(QString::fromUtf8(settings::kDefaultRtmpUrl));
-    btnOsc_ = new QPushButton(QStringLiteral("动作"), this);
-    btnOsc_->setFixedSize(120, 60);
-    btnOsc_->setStyleSheet(
-        "QPushButton{background:#555;color:#fff;font-size:18px;border-radius:6px;}"
-        "QPushButton:pressed{background:#333;}");
-    connect(btnOsc_, &QPushButton::clicked, this, &MainWindow::toggleOsc);
-
-    btnQuit_ = new QPushButton(QStringLiteral("退出"), this);
-    btnQuit_->setFixedSize(120, 60);
-    btnQuit_->setStyleSheet(
-        "QPushButton{background:#b03030;color:#fff;font-size:18px;border-radius:6px;}"
-        "QPushButton:pressed{background:#901010;}");
-    connect(btnQuit_, &QPushButton::clicked, qApp, &QApplication::quit);
-
     // 布局：视频铺满，悬浮控件在顶
     auto* container = new QWidget(this);
     auto* root = new QVBoxLayout(container);
@@ -107,35 +104,24 @@ void MainWindow::buildUi() {
     setCentralWidget(container);
 
     // 悬浮覆盖：用手动定位在顶层子控件
-    stateLabel_->setParent(video_);
     statusLabel_->setParent(video_);
     btnRec_->setParent(video_);
     btnStream_->setParent(video_);
-    urlEdit_->setParent(video_);
-    btnOsc_->setParent(video_);
-    btnQuit_->setParent(video_);
 }
 
 void MainWindow::resizeEvent(QResizeEvent* e) {
     QMainWindow::resizeEvent(e);
     if (!video_) return;
-    int w = video_->width(), h = video_->height();
-    stateLabel_->move(20, 20);
-    statusLabel_->move(20, 70);
+    statusLabel_->move(20, 20);
 
-    int by = h - 80;
+    int by = video_->height() - 80;
     btnRec_->move(20, by);
     btnStream_->move(20 + 220 + 15, by);
-    urlEdit_->move(20 + 220 + 15 + 220 + 20, by + 6);
-    btnOsc_->move(w - 140 - 20 - 135, by);
-    btnQuit_->move(w - 140, by);
 }
 
-void MainWindow::keyPressEvent(QKeyEvent* e) {
-    if (e->key() == Qt::Key_Escape)
-        qApp->quit();
-    else
-        QMainWindow::keyPressEvent(e);
+void MainWindow::closeEvent(QCloseEvent* e) {
+    // 不支持退出：忽略所有关闭请求（Esc/Alt+F4/窗口关闭）
+    e->ignore();
 }
 
 void MainWindow::toggleRecording() {
@@ -159,9 +145,8 @@ void MainWindow::toggleRecording() {
 
 void MainWindow::toggleStreaming() {
     if (!streaming_) {
-        QString url = urlEdit_->text().trimmed();
-        if (url.isEmpty()) return;
-        if (ctrl_->startStreaming(url.toStdString())) {
+        if (rtmpUrl_.trimmed().isEmpty()) return;
+        if (ctrl_->startStreaming(rtmpUrl_.toStdString())) {
             streaming_ = true;
             btnStream_->setText(QStringLiteral("■ 停止推流"));
             btnStream_->setStyleSheet("QPushButton{background:#c04000;color:#fff;"
@@ -174,10 +159,6 @@ void MainWindow::toggleStreaming() {
         btnStream_->setStyleSheet("QPushButton{background:#1c6fd8;color:#fff;"
                                   "font-size:20px;border-radius:6px;}");
     }
-}
-
-void MainWindow::toggleOsc() {
-    // 占位：后续可接入动作控制
 }
 
 void MainWindow::refreshStatus() {

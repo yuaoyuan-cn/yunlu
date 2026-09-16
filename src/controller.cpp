@@ -17,9 +17,10 @@ Controller::~Controller() {
     stopVideo();
 }
 
-bool Controller::startCapture(const std::string& device, int w, int h, int fps) {
+bool Controller::startCapture(const std::string& device, int w, int h, int fps, int bitrate) {
     if (isCapturing()) return true;
     width_ = w; height_ = h; fps_ = fps;
+    if (bitrate > 0) bitrate_ = bitrate;
 
     // vpu 编码器输入格式即 NV12（与采集一致），此处直接开硬编
     if (!encoder_->open(w, h, fps, bitrate_, "h264_rkmpp")) {

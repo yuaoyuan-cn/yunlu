@@ -23,7 +23,7 @@ public:
 
     void setPreview(VideoWidget* w) { preview_ = w; }
 
-    bool startCapture(const std::string& device, int w, int h, int fps);
+    bool startCapture(const std::string& device, int w, int h, int fps, int bitrate);
     void stopVideo();
 
     bool startRecording(const std::string& path);
