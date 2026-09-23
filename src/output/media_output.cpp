@@ -28,7 +28,11 @@ bool MediaOutput::openSink(Sink& s, const std::string& url,
     if (!encCtx || !encCtx->codec || !encCtx->codec_id) return false;
 
     AVFormatContext* fmt = nullptr;
-    int ret = avformat_alloc_output_context2(&fmt, nullptr, nullptr, url.c_str());
+    // RTMP(S) 地址带查询串(?secret=...)时 FFmpeg 无法自动猜出封装格式，需显式指定 flv
+    const char* fmtName = nullptr;
+    if (url.compare(0, 7, "rtmp://") == 0 || url.compare(0, 8, "rtmps://") == 0)
+        fmtName = "flv";
+    int ret = avformat_alloc_output_context2(&fmt, nullptr, fmtName, url.c_str());
     if (ret < 0 || !fmt) {
         char eb[128];
         fprintf(stderr, "[output] alloc output ctx failed: %s\n", errstr(ret, eb, sizeof(eb)));

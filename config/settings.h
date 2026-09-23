@@ -18,7 +18,8 @@ inline const int   kBitrate = 8 * 1000 * 1000; // bps
 inline const char* kRecordDir = "/home/cat/recordings";
 
 // 默认 RTMP 地址（运行时配置文件优先）
-inline const char* kDefaultRtmpUrl = "rtmp://192.168.66.1/live/cam";
+inline const char* kDefaultRtmpUrl =
+    "rtmp://58.87.69.226/live/yunlu1?secret=18d44630c086480783f62f33dbb7e09a";
 
 // 运行时配置文件（INI）。不存在时程序会自动生成默认内容，可直接编辑。
 inline const char* kConfigFile = "/home/cat/yunlu.conf";

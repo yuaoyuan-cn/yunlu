@@ -22,16 +22,8 @@ bool Controller::startCapture(const std::string& device, int w, int h, int fps, 
     width_ = w; height_ = h; fps_ = fps;
     if (bitrate > 0) bitrate_ = bitrate;
 
-    // vpu 编码器输入格式即 NV12（与采集一致），此处直接开硬编
-    if (!encoder_->open(w, h, fps, bitrate_, "h264_rkmpp")) {
-        fprintf(stderr, "[controller] open encoder failed\n");
-        return false;
-    }
-
-    encoder_->setCallback([this](const EncodedPacket& p){ onPacket(p); });
-
-    // 采集支持 HDMI 热插拔自动恢复：只要设备能打开 start 即成功，
-    // 无信号时后台自动等待，接入后自动采集。
+    // 编码器不在此处打开：等采集到第一帧后，按"实际信号分辨率"打开。
+    // settings 里的宽高只作兜底，HDMI 真实分辨率由信号决定。
     bool ok = capture_->start(device,
         [this](const VideoFrame& f){ onFrame(f); },
         [this](bool hasSignal, int sw, int sh){
@@ -40,11 +32,7 @@ bool Controller::startCapture(const std::string& device, int w, int h, int fps, 
             hasSignal_ = hasSignal;
             if (hasSignal) { capW_ = sw; capH_ = sh; }
         });
-    if (!ok) {
-        encoder_->close();
-        return false;
-    }
-    return true;
+    return ok;
 }
 
 void Controller::stopVideo() {
@@ -67,13 +55,17 @@ void Controller::onFrame(const VideoFrame& f) {
         fpsLastTimeUs_ = nowUs;
     }
 
-    // 分辨率变化：仅记录日志，不重配编码器（避免线程竞态崩溃）
-    if (f.width != width_ || f.height != height_) {
-        static bool logged = false;
-        if (!logged) {
-            fprintf(stderr, "[controller] resolution mismatch: %dx%d vs encoder %dx%d, skipping encode\n",
-                    f.width, f.height, width_, height_);
-            logged = true;
+    // 按实际帧尺寸打开/重开编码器。全部在采集线程内执行，
+    // 与编码器内部线程串行，避免此前跨线程 close/open 导致的崩溃。
+    if (f.width > 0 && f.height > 0 &&
+        (!encoder_->isOpen() || f.width != width_ || f.height != height_)) {
+        encoder_->close();
+        if (encoder_->open(f.width, f.height, fps_, bitrate_, "h264_rkmpp")) {
+            encoder_->setCallback([this](const EncodedPacket& p){ onPacket(p); });
+            width_ = f.width; height_ = f.height;
+            fprintf(stderr, "[controller] encoder opened %dx%d\n", f.width, f.height);
+        } else {
+            fprintf(stderr, "[controller] encoder open failed %dx%d\n", f.width, f.height);
         }
     }
 
