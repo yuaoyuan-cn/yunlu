@@ -94,11 +94,11 @@ bool Controller::startStreaming(const std::string& url) {
 }
 
 void Controller::stopRecording() {
-    output_->closeAll();   // 录制+推流一起写尾
+    output_->closeRecorder();   // 只停录制，不影响推流
 }
 
 void Controller::stopStreaming() {
-    output_->closeAll();
+    output_->closeStream();     // 只停推流，不影响录制
 }
 
 bool Controller::isCapturing() const { return capture_->isCapturing(); }

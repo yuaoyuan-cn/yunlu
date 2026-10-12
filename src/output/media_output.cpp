@@ -78,7 +78,8 @@ bool MediaOutput::openSink(Sink& s, const std::string& url,
     s.st  = st;
     s.startUs = 0;
     s.open = true;
-    fprintf(stderr, "[output] opened %s\n", url.c_str());
+    fprintf(stderr, "[output] opened %s (stream time_base=%d/%d)\n",
+            url.c_str(), st->time_base.num, st->time_base.den);
     return true;
 }
 
@@ -107,9 +108,15 @@ void MediaOutput::pushToSink(Sink& s, const uint8_t* data, int size,
     pkt->stream_index = s.st->index;
     if (keyframe) pkt->flags |= AV_PKT_FLAG_KEY;
 
-    // 时间戳：转成流 time_base(1/1000000)
+    // 时间戳：从编码器时间基(通常 1/1000000) 缩放到 muxer 实际的流 time_base。
+    // 注意：muxer 在 avformat_write_header 时可能改写 st->time_base（FLV/RTMP 为
+    // 1/1000），若不重缩放，微秒会被当成毫秒写入 -> 时间戳放大 1000 倍，
+    // 表现为录制时长异常（几秒显示几万秒）、播放器反复重载。
+    AVRational srcTb = encCtx ? encCtx->time_base : (AVRational){1, 1000000};
+    if (srcTb.num <= 0 || srcTb.den <= 0) srcTb = (AVRational){1, 1000000};
     pkt->pts = ptsUs;
     pkt->dts = dtsUs;
+    av_packet_rescale_ts(pkt, srcTb, s.st->time_base);
 
     {
         std::lock_guard<std::mutex> lock(s.mtx);
@@ -141,18 +148,29 @@ void MediaOutput::writePacket(const uint8_t* data, int size,
     if (str_.open.load()) pushToSink(str_, data, size, ptsUs, dtsUs, keyframe, encCtx);
 }
 
-void MediaOutput::closeAll() {
-    for (Sink* s : {&rec_, &str_}) {
-        if (s->fmt) {
-            std::lock_guard<std::mutex> lock(s->mtx);
-            av_write_trailer(s->fmt);
-            if (s->fmt->pb) avio_closep(&s->fmt->pb);
-            avformat_free_context(s->fmt);
-            s->fmt = nullptr;
-            s->st  = nullptr;
-        }
-        s->open = false;
+void MediaOutput::closeSink(Sink& s) {
+    if (s.fmt) {
+        std::lock_guard<std::mutex> lock(s.mtx);
+        av_write_trailer(s.fmt);
+        if (s.fmt->pb) avio_closep(&s.fmt->pb);
+        avformat_free_context(s.fmt);
+        s.fmt = nullptr;
+        s.st  = nullptr;
     }
+    s.open = false;
+}
+
+void MediaOutput::closeRecorder() {
+    closeSink(rec_);
+}
+
+void MediaOutput::closeStream() {
+    closeSink(str_);
+}
+
+void MediaOutput::closeAll() {
+    closeSink(rec_);
+    closeSink(str_);
     anyOpen_ = false;
 }
 

@@ -26,6 +26,8 @@ public:
     void writePacket(const uint8_t* data, int size,
                      int64_t ptsUs, int64_t dtsUs, bool keyframe,
                      const AVCodecContext* encCtx);
+    void closeRecorder();
+    void closeStream();
     void closeAll();
 
     bool recording() const { return rec_.open.load(); }
@@ -45,6 +47,7 @@ private:
 
     static bool openSink(Sink& s, const std::string& url,
                          const AVCodecContext* encCtx);
+    static void closeSink(Sink& s);
     void pushToSink(Sink& s, const uint8_t* data, int size,
                     int64_t ptsUs, int64_t dtsUs, bool keyframe,
                     const AVCodecContext* encCtx);
