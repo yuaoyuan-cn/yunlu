@@ -2,6 +2,7 @@
 #include <QSurfaceFormat>
 #include <QDir>
 #include <QTimer>
+#include <QLockFile>
 
 #include <csignal>
 #include <cstdio>
@@ -22,6 +23,13 @@ void onTermSignal(int) { g_stopRequested.store(true); }
 int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("yunlu"));
+
+    // 单实例保护：避免桌面图标重复点击启动多个实例抢占 /dev/video0
+    QLockFile lockFile(QDir::tempPath() + QStringLiteral("/yunlu.lock"));
+    if (!lockFile.tryLock(100)) {
+        fprintf(stderr, "[main] 云录已在运行，忽略本次启动\n");
+        return 1;
+    }
 
     // 确保录制目录存在
     QDir().mkpath(QStringLiteral(OUTDIR));

@@ -6,11 +6,14 @@
 #include <QPushButton>
 #include <QLabel>
 #include <QResizeEvent>
-#include <QCloseEvent>
 #include <QApplication>
 #include <QDateTime>
 #include <QSettings>
 #include <QFile>
+#include <QDir>
+#include <QFileInfo>
+#include <QStorageInfo>
+#include <QKeyEvent>
 
 #include "../display/video_widget.h"
 #include "../../config/settings.h"
@@ -20,6 +23,22 @@
 #endif
 
 namespace yunlu {
+
+namespace {
+// 查找已挂载的 U 盘 / 可移动存储（常见自动挂载路径）
+QString findUsbMount() {
+    for (const QStorageInfo& s : QStorageInfo::mountedVolumes()) {
+        if (!s.isValid() || !s.isReady() || s.isRoot()) continue;
+        const QString root = s.rootPath();
+        if (root.startsWith(QStringLiteral("/media/")) ||
+            root.startsWith(QStringLiteral("/run/media/")) ||
+            root.startsWith(QStringLiteral("/mnt/"))) {
+            return root;
+        }
+    }
+    return QString();
+}
+}
 
 MainWindow::MainWindow(Controller* ctrl, QWidget* parent)
     : QMainWindow(parent), ctrl_(ctrl) {
@@ -40,8 +59,6 @@ MainWindow::MainWindow(Controller* ctrl, QWidget* parent)
     showFullScreen();
 
     // 自动启动采集（分辨率/帧率取 settings.h，码率取运行时配置文件）
-    // 采集支持 HDMI 热插拔自动恢复：无信号也能正常启动并显示界面，
-    // 接入信号后自动开始采集（格式由驱动/信号决定，统一转 NV12）。
     ctrl_->startCapture(settings::kCaptureDevice,
                         settings::kCaptureWidth, settings::kCaptureHeight,
                         settings::kCaptureFps, bitrate_);
@@ -51,7 +68,6 @@ void MainWindow::loadConfig() {
     const QString path = QString::fromUtf8(settings::kConfigFile);
     QSettings cfg(path, QSettings::IniFormat);
 
-    // 首次运行：生成默认配置文件，方便在设备上直接编辑
     if (!QFile::exists(path)) {
         cfg.setValue("stream/url", QString::fromUtf8(settings::kDefaultRtmpUrl));
         cfg.setValue("stream/bitrate", settings::kBitrate);
@@ -94,6 +110,23 @@ void MainWindow::buildUi() {
         "QPushButton:pressed{background:#145aa8;}");
     connect(btnStream_, &QPushButton::clicked, this, &MainWindow::toggleStreaming);
 
+    btnUsb_ = new QPushButton(QStringLiteral("⏏ 拷贝到U盘"), this);
+    btnUsb_->setFixedSize(200, 60);
+    btnUsb_->setStyleSheet(
+        "QPushButton{background:#8a6d1f;color:#fff;font-size:20px;border-radius:6px;}"
+        "QPushButton:pressed{background:#6b5315;}");
+    connect(btnUsb_, &QPushButton::clicked, this, &MainWindow::copyToUsb);
+
+    btnQuit_ = new QPushButton(QStringLiteral("退出"), this);
+    btnQuit_->setFixedSize(120, 60);
+    btnQuit_->setStyleSheet(
+        "QPushButton{background:#b03030;color:#fff;font-size:18px;border-radius:6px;}"
+        "QPushButton:pressed{background:#901010;}");
+    connect(btnQuit_, &QPushButton::clicked, this, [this]{
+        if (ctrl_) ctrl_->stopVideo();   // 优雅停止录制/推流
+        qApp->quit();
+    });
+
     // 布局：视频铺满，悬浮控件在顶
     auto* container = new QWidget(this);
     auto* root = new QVBoxLayout(container);
@@ -107,6 +140,8 @@ void MainWindow::buildUi() {
     statusLabel_->setParent(video_);
     btnRec_->setParent(video_);
     btnStream_->setParent(video_);
+    btnUsb_->setParent(video_);
+    btnQuit_->setParent(video_);
 }
 
 void MainWindow::resizeEvent(QResizeEvent* e) {
@@ -117,11 +152,17 @@ void MainWindow::resizeEvent(QResizeEvent* e) {
     int by = video_->height() - 80;
     btnRec_->move(20, by);
     btnStream_->move(20 + 220 + 15, by);
+    btnUsb_->move(20 + 220 + 15 + 220 + 15, by);
+    btnQuit_->move(video_->width() - 140, by);
 }
 
-void MainWindow::closeEvent(QCloseEvent* e) {
-    // 不支持退出：忽略所有关闭请求（Esc/Alt+F4/窗口关闭）
-    e->ignore();
+void MainWindow::keyPressEvent(QKeyEvent* e) {
+    if (e->key() == Qt::Key_Escape) {
+        if (ctrl_) ctrl_->stopVideo();
+        qApp->quit();
+    } else {
+        QMainWindow::keyPressEvent(e);
+    }
 }
 
 void MainWindow::toggleRecording() {
@@ -159,6 +200,49 @@ void MainWindow::toggleStreaming() {
         btnStream_->setStyleSheet("QPushButton{background:#1c6fd8;color:#fff;"
                                   "font-size:20px;border-radius:6px;}");
     }
+}
+
+void MainWindow::copyToUsb() {
+    const QString usb = findUsbMount();
+    if (usb.isEmpty()) {
+        statusLabel_->setText(QStringLiteral("未检测到U盘，请插入后重试"));
+        statusLabel_->adjustSize();
+        return;
+    }
+
+    QDir srcDir(QString::fromUtf8(OUTDIR));
+    QString dstDirPath = usb + QStringLiteral("/yunlu");
+    if (!QDir().mkpath(dstDirPath)) {
+        statusLabel_->setText(QStringLiteral("U盘目录创建失败: ") + dstDirPath);
+        statusLabel_->adjustSize();
+        return;
+    }
+
+    QStringList files = srcDir.entryList(QStringList() << QStringLiteral("*.mp4"),
+                                         QDir::Files, QDir::Time);
+    int copied = 0, skipped = 0, failed = 0;
+    for (const QString& f : files) {
+        const QString srcPath = srcDir.absoluteFilePath(f);
+        const QString dstPath = dstDirPath + QStringLiteral("/") + f;
+
+        QFileInfo srcInfo(srcPath);
+        QFileInfo dstInfo(dstPath);
+        if (dstInfo.exists() && dstInfo.size() == srcInfo.size()) {
+            ++skipped;
+            continue;
+        }
+        if (dstInfo.exists()) QFile::remove(dstPath);
+        if (QFile::copy(srcPath, dstPath)) ++copied;
+        else ++failed;
+
+        statusLabel_->setText(QStringLiteral("拷贝中: ") + f);
+        statusLabel_->adjustSize();
+        QApplication::processEvents();   // 保持界面响应
+    }
+
+    statusLabel_->setText(QStringLiteral("U盘拷贝完成: 新增 %1, 跳过 %2, 失败 %3 -> %4")
+                          .arg(copied).arg(skipped).arg(failed).arg(dstDirPath));
+    statusLabel_->adjustSize();
 }
 
 void MainWindow::refreshStatus() {

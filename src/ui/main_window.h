@@ -9,6 +9,7 @@
 
 class QPushButton;
 class QLabel;
+class QKeyEvent;
 
 class VideoWidget;
 
@@ -21,11 +22,12 @@ public:
 
 protected:
     void resizeEvent(QResizeEvent* e) override;
-    void closeEvent(QCloseEvent* e) override;
+    void keyPressEvent(QKeyEvent* e) override;
 
 private slots:
     void toggleRecording();
     void toggleStreaming();
+    void copyToUsb();
     void refreshStatus();
 
 private:
@@ -40,6 +42,8 @@ private:
 
     QPushButton* btnRec_  = nullptr;
     QPushButton* btnStream_ = nullptr;
+    QPushButton* btnUsb_  = nullptr;
+    QPushButton* btnQuit_ = nullptr;
 
     // 来自运行时配置文件
     QString rtmpUrl_;
