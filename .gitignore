@@ -1,0 +1,27 @@
+# Build artifacts
+/build/
+/build-*/
+cmake-build-*/
+*.o
+*.obj
+*.a
+*.so
+*.d
+
+# Recordings (large视频文件不入库)
+/recordings/
+*.mp4
+*.mkv
+*.flv
+*.h264
+
+# IDE / OS
+.idea/
+.vscode/
+*.user
+.DS_Store
+Thumbs.db
+
+# Local logs
+*.log
+/core
