@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <cerrno>
 
 extern "C" {
 #include <libavformat/avio.h>
@@ -32,6 +33,10 @@ bool MediaOutput::openSink(Sink& s, const std::string& url,
     const char* fmtName = nullptr;
     if (url.compare(0, 7, "rtmp://") == 0 || url.compare(0, 8, "rtmps://") == 0)
         fmtName = "flv";
+    else if (url.size() > 4 && url.compare(url.size() - 4, 4, ".mkv") == 0)
+        fmtName = "matroska";
+    else if (url.size() > 4 && url.compare(url.size() - 4, 4, ".mp4") == 0)
+        fmtName = "mp4";
     int ret = avformat_alloc_output_context2(&fmt, nullptr, fmtName, url.c_str());
     if (ret < 0 || !fmt) {
         char eb[128];
@@ -74,10 +79,15 @@ bool MediaOutput::openSink(Sink& s, const std::string& url,
         return false;
     }
 
-    s.fmt = fmt;
-    s.st  = st;
-    s.startUs = 0;
-    s.open = true;
+    {
+        std::lock_guard<std::mutex> lock(s.mtx);
+        s.fmt = fmt;
+        s.st  = st;
+        s.startUs = 0;
+        s.bytes = 0;
+        s.path = url;
+        s.open = true;
+    }
     fprintf(stderr, "[output] opened %s (stream time_base=%d/%d)\n",
             url.c_str(), st->time_base.num, st->time_base.den);
     return true;
@@ -127,8 +137,9 @@ void MediaOutput::pushToSink(Sink& s, const uint8_t* data, int size,
         int ret = av_interleaved_write_frame(s.fmt, pkt);
         if (ret < 0) {
             char eb[128];
-            fprintf(stderr, "[output] interleave write failed: %s\n", errstr(ret, eb, sizeof(eb)));
-            // 网络断开时关闭对应 sink 但保留另一个
+            fprintf(stderr, "[output] interleave write failed: %s (已写 %.2f MB)\n",
+                    errstr(ret, eb, sizeof(eb)), s.bytes.load() / (1024.0 * 1024.0));
+            // 网络断开/写盘失败时关闭对应 sink 但保留另一个
             if (s.fmt) {
                 av_write_trailer(s.fmt);
                 if (s.fmt->pb) avio_closep(&s.fmt->pb);
@@ -136,6 +147,8 @@ void MediaOutput::pushToSink(Sink& s, const uint8_t* data, int size,
                 s.fmt = nullptr;
                 s.open = false;
             }
+        } else {
+            s.bytes.fetch_add(pkt->size);
         }
     }
     av_packet_free(&pkt);
@@ -158,10 +171,20 @@ void MediaOutput::closeSink(Sink& s) {
         s.st  = nullptr;
     }
     s.open = false;
+    s.bytes = 0;
 }
 
 void MediaOutput::closeRecorder() {
     closeSink(rec_);
+}
+
+bool MediaOutput::rotateRecorder(const std::string& path, const AVCodecContext* encCtx) {
+    if (recording()) {
+        closeSink(rec_);
+    }
+    if (!openSink(rec_, path, encCtx)) return false;
+    anyOpen_ = true;
+    return true;
 }
 
 void MediaOutput::closeStream() {

@@ -88,6 +88,11 @@ bool Controller::startRecording(const std::string& path) {
     return output_->openRecorder(path, encoder_->codecCtx());
 }
 
+bool Controller::rotateRecording(const std::string& path) {
+    if (!encoder_->isOpen()) return false;
+    return output_->rotateRecorder(path, encoder_->codecCtx());
+}
+
 bool Controller::startStreaming(const std::string& url) {
     if (isStreaming() || !encoder_->isOpen()) return false;
     return output_->openStream(url, encoder_->codecCtx());

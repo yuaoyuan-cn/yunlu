@@ -33,6 +33,7 @@ private slots:
 private:
     void buildUi();
     void loadConfig();
+    void setRecordStyle(bool recording);
 
     Controller* ctrl_;
     VideoWidget* video_ = nullptr;
@@ -48,9 +49,14 @@ private:
     // 来自运行时配置文件
     QString rtmpUrl_;
     int bitrate_ = 0;
+    int64_t maxRecordBytes_ = 2000LL * 1024 * 1024;
+    int64_t minFreeBytes_ = 500LL * 1024 * 1024;
+    QString recordExt_ = QStringLiteral(".mkv");
 
     bool recording_ = false;
     bool streaming_ = false;
+
+    QString recordFile_;   // 当前正在录制的文件名
 };
 
 } // namespace yunlu

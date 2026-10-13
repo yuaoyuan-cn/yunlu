@@ -78,9 +78,33 @@ void MainWindow::loadConfig() {
     rtmpUrl_ = cfg.value("stream/url", QString::fromUtf8(settings::kDefaultRtmpUrl)).toString();
     bitrate_ = cfg.value("stream/bitrate", settings::kBitrate).toInt();
 
+    // 录制容器后缀：mkv(默认，抗中断) / mp4
+    QString ext = cfg.value("record/format", QString::fromUtf8(settings::kContainer)).toString();
+    ext = ext.trimmed().toLower();
+    ext.replace(QStringLiteral("."), QString());
+    if (ext != QStringLiteral("mkv") && ext != QStringLiteral("mp4")) ext = QStringLiteral("mkv");
+    recordExt_ = QStringLiteral(".") + ext;
+
+    int maxMb = cfg.value("record/max_file_mb", settings::kMaxFileMB).toInt();
+    if (maxMb <= 0) maxMb = settings::kMaxFileMB;
+    maxRecordBytes_ = static_cast<int64_t>(maxMb) * 1024 * 1024;
+
+    int minMb = cfg.value("record/min_free_mb", settings::kMinFreeMB).toInt();
+    if (minMb < 0) minMb = settings::kMinFreeMB;
+    minFreeBytes_ = static_cast<int64_t>(minMb) * 1024 * 1024;
+
     fprintf(stderr, "[config] 文件: %s\n", path.toUtf8().constData());
     fprintf(stderr, "[config] 推流地址: %s\n", rtmpUrl_.toUtf8().constData());
     fprintf(stderr, "[config] 码率: %d bps\n", bitrate_);
+    fprintf(stderr, "[config] 分段大小: %d MB, 磁盘保护: %d MB\n", maxMb, minMb);
+
+    // 启动自检：历史上 MP4 录制被中断会残留 .part 文件（MKV 无此问题）
+    QDir recd(QString::fromUtf8(OUTDIR));
+    QStringList parts = recd.entryList(QStringList() << QStringLiteral("*.mp4.part"),
+                                       QDir::Files, QDir::Name);
+    if (!parts.isEmpty())
+        fprintf(stderr, "[config] 发现 %d 个旧的未完成 .part 文件，可用 python3 ~/mp4fix.py 抢救\n",
+                parts.size());
 }
 
 void MainWindow::buildUi() {
@@ -165,22 +189,32 @@ void MainWindow::keyPressEvent(QKeyEvent* e) {
     }
 }
 
+void MainWindow::setRecordStyle(bool recording) {
+    if (recording) {
+        btnRec_->setText(QStringLiteral("■ 停止录制"));
+        btnRec_->setStyleSheet("QPushButton{background:#c04000;color:#fff;"
+                               "font-size:20px;border-radius:6px;}");
+    } else {
+        btnRec_->setText(QStringLiteral("● 开始录制"));
+        btnRec_->setStyleSheet("QPushButton{background:#2c8f2c;color:#fff;"
+                               "font-size:20px;border-radius:6px;}");
+    }
+}
+
 void MainWindow::toggleRecording() {
     if (!recording_) {
-        QDateTime now = QDateTime::currentDateTime();
-        QString fname = QStringLiteral(OUTDIR) + now.toString("yyyyMMdd_HHmmss") + QStringLiteral(".mp4");
-        if (ctrl_->startRecording(fname.toStdString())) {
+        // MKV 是追加式容器，中断后已录制部分仍可播放，因此无需 .part 临时名
+        QString fname = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss") + recordExt_;
+        if (ctrl_->startRecording((QStringLiteral(OUTDIR) + fname).toStdString())) {
             recording_ = true;
-            btnRec_->setText(QStringLiteral("■ 停止录制"));
-            btnRec_->setStyleSheet("QPushButton{background:#c04000;color:#fff;"
-                                   "font-size:20px;border-radius:6px;}");
+            recordFile_ = QStringLiteral(OUTDIR) + fname;
+            setRecordStyle(true);
         }
     } else {
         ctrl_->stopRecording();
         recording_ = false;
-        btnRec_->setText(QStringLiteral("● 开始录制"));
-        btnRec_->setStyleSheet("QPushButton{background:#2c8f2c;color:#fff;"
-                               "font-size:20px;border-radius:6px;}");
+        recordFile_.clear();
+        setRecordStyle(false);
     }
 }
 
@@ -218,8 +252,10 @@ void MainWindow::copyToUsb() {
         return;
     }
 
-    QStringList files = srcDir.entryList(QStringList() << QStringLiteral("*.mp4"),
-                                         QDir::Files, QDir::Time);
+    QStringList files = srcDir.entryList(
+        QStringList() << QStringLiteral("*.mkv") << QStringLiteral("*.mp4")
+                      << QStringLiteral("*.mp4.part"),
+        QDir::Files, QDir::Time);
     int copied = 0, skipped = 0, failed = 0;
     for (const QString& f : files) {
         const QString srcPath = srcDir.absoluteFilePath(f);
@@ -247,12 +283,53 @@ void MainWindow::copyToUsb() {
 
 void MainWindow::refreshStatus() {
     if (!ctrl_) return;
+
+    // 录制状态回查：MediaOutput 在写失败时会静默关闭录制 sink，
+    // 若不回查，按钮会停留在"暂停停止"而实际已停止录制。
+    if (recording_ && !ctrl_->isRecording()) {
+        recording_ = false;
+        recordFile_.clear();
+        setRecordStyle(false);
+        statusLabel_->setText(QStringLiteral(" 录制已中断(磁盘写满或文件过大)"));
+        statusLabel_->adjustSize();
+        return;
+    }
+
+    // 单文件过大时自动分段，规避 MP4 4GB 上限
+    // 磁盘余量不足时干净停止（保留写入尾的能力），避免写满导致 moov 写不下
+    if (recording_) {
+        QStorageInfo st(QString::fromUtf8(OUTDIR));
+        const bool lowDisk = st.isValid() && st.isReady() &&
+                             st.bytesAvailable() < minFreeBytes_;
+        if (lowDisk) {
+            ctrl_->stopRecording();
+            recording_ = false;
+            recordFile_.clear();
+            setRecordStyle(false);
+            statusLabel_->setText(QStringLiteral(" 磁盘空间不足，已停止录制，请备份后清理"));
+            statusLabel_->adjustSize();
+            return;
+        }
+
+        if (ctrl_->recorderBytes() >= maxRecordBytes_) {
+            QString fname = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss") + recordExt_;
+            if (ctrl_->rotateRecording((QStringLiteral(OUTDIR) + fname).toStdString())) {
+                recordFile_ = QStringLiteral(OUTDIR) + fname;
+                statusLabel_->setText(QStringLiteral(" 录制分段: ") + fname);
+                statusLabel_->adjustSize();
+                return;
+            }
+        }
+    }
+
     QString s;
     if (ctrl_->hasSignal()) {
         s += QStringLiteral(" 采集:开");
         s += QStringLiteral(" 录制:") + (ctrl_->isRecording() ? QStringLiteral("●") : QStringLiteral("○"));
         s += QStringLiteral(" 推流:") + (ctrl_->isStreaming() ? QStringLiteral("▶") : QStringLiteral("□"));
         s += QStringLiteral(" 丢帧:") + QString::number(ctrl_->droppedFrames());
+        if (ctrl_->isRecording())
+            s += QStringLiteral(" ") + QString::number(ctrl_->recorderBytes() / (1024 * 1024)) + QStringLiteral("MB");
         s += QStringLiteral("   ") + QString::number(ctrl_->captureWidth()) + QStringLiteral("x")
              + QString::number(ctrl_->captureHeight());
         s += QStringLiteral("  ") + QString::number(ctrl_->captureFps(), 'f', 1) + QStringLiteral("fps");

@@ -30,8 +30,12 @@ public:
     void closeStream();
     void closeAll();
 
+    // 录制分段：关闭当前录制文件并按新路径重开（用于单文件过大时自动切分）
+    bool rotateRecorder(const std::string& path, const AVCodecContext* encCtx);
+
     bool recording() const { return rec_.open.load(); }
     bool streaming() const { return str_.open.load(); }
+    int64_t recorderBytes() const { return rec_.bytes.load(); }
 
 private:
     struct Sink {
@@ -40,6 +44,8 @@ private:
         int64_t startUs = 0;
         std::mutex mtx;
         std::atomic<bool> open{false};
+        std::atomic<int64_t> bytes{0};
+        std::string path;
     };
 
     Sink rec_, str_;

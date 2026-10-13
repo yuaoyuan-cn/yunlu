@@ -28,6 +28,8 @@ public:
 
     bool startRecording(const std::string& path);
     bool startStreaming(const std::string& url);
+    // 录制分段：关闭当前文件并按新路径重开（单文件过大时调用）
+    bool rotateRecording(const std::string& path);
     void stopRecording();
     void stopStreaming();
 
@@ -40,6 +42,7 @@ public:
     int captureHeight() const;
 
     uint64_t droppedFrames() const;
+    int64_t recorderBytes() const { return output_->recorderBytes(); }
     int width() const { return width_; }
     int height() const { return height_; }
     double captureFps() const { return captureFps_; }
