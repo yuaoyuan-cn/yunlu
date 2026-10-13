@@ -1,6 +1,7 @@
 #include "main_window.h"
 
 #include <cstdio>
+#include <ctime>
 #include <vector>
 
 #include <QVBoxLayout>
@@ -331,6 +332,8 @@ void MainWindow::toggleStreaming() {
     }
 }
 
+// 分块拷贝并回报进度。dst 为临时文件，成功后由调用方改名。
+// 返回 false 时 dst 里可能残留不完整数据，调用方需删除。
 bool MainWindow::copyFileWithProgress(const QString& src, const QString& dst,
                                       const std::function<void(qint64)>& onChunk) {
     QFile in(src);
@@ -341,6 +344,10 @@ bool MainWindow::copyFileWithProgress(const QString& src, const QString& dst,
     const qint64 kChunk = 1 << 20;   // 1MB
     std::vector<char> buf(kChunk);
     while (!in.atEnd()) {
+        // 每块都检查 U 盘是否还在，拔出则立刻中断，避免长时间无谓写入
+        const QString usb = findUsbMount();
+        if (usb.isEmpty()) { in.close(); out.close(); return false; }
+
         const qint64 n = in.read(buf.data(), kChunk);
         if (n <= 0) break;
         if (out.write(buf.data(), n) != n) { in.close(); out.close(); return false; }
@@ -392,6 +399,7 @@ void MainWindow::copyToUsb() {
 
     if (jobs.isEmpty()) {
         copyBar_->hide();
+        copyBar_->reset();
         statusLabel_->setText(QStringLiteral(" 无新文件需要拷贝(跳过 %1 个)").arg(skipped));
         statusLabel_->adjustSize();
         return;
@@ -399,6 +407,7 @@ void MainWindow::copyToUsb() {
 
     copyBar_->setRange(0, 100);
     copyBar_->setValue(0);
+    copyBar_->setFormat(QStringLiteral("%p%"));
     copyBar_->show();
 
     int copied = 0, failed = 0;
@@ -408,21 +417,39 @@ void MainWindow::copyToUsb() {
                               .arg(QFileInfo(j.src).fileName())
                               .arg(copied + 1).arg(jobs.size()));
         statusLabel_->adjustSize();
-        copyBar_->setFormat(QStringLiteral("%p%"));
 
         if (QFile::exists(j.dst)) QFile::remove(j.dst);
-        bool ok = copyFileWithProgress(j.src, j.dst, [&](qint64 n){
+        // 先写临时文件，成功后才改名，拷贝中断不会留下"看起来完整"的文件
+        const QString tmp = j.dst + QStringLiteral(".part");
+        if (QFile::exists(tmp)) QFile::remove(tmp);
+
+        bool ok = copyFileWithProgress(j.src, tmp, [&](qint64 n){
+            if (totalBytes <= 0) return;
             doneBytes += n;
-            if (totalBytes > 0) {
-                const int pct = static_cast<int>(doneBytes * 100 / totalBytes);
-                copyBar_->setValue(pct);
-                copyBar_->setFormat(QStringLiteral("%1 / %2 MB  %3%")
-                    .arg(doneBytes / (1024 * 1024)).arg(totalBytes / (1024 * 1024)).arg(pct));
-                statusLabel_->setText(QStringLiteral(" 拷貝中 %1 %2%")
-                    .arg(QFileInfo(j.src).fileName()).arg(pct));
-            }
+            const int pct = static_cast<int>(doneBytes * 100 / totalBytes);
+            copyBar_->setValue(pct);
+            copyBar_->setFormat(QStringLiteral("%1 / %2 MB  %3%")
+                .arg(doneBytes / (1024 * 1024)).arg(totalBytes / (1024 * 1024)).arg(pct));
+            statusLabel_->setText(QStringLiteral(" 拷贝中 %1 %2%")
+                                  .arg(QFileInfo(j.src).fileName()).arg(pct));
+            statusLabel_->adjustSize();
         });
-        if (ok) ++copied; else ++failed;
+
+        if (!ok)
+            QFile::remove(tmp);            // 清理半成品
+        if (ok && !QFile::rename(tmp, j.dst)) { ok = false; QFile::remove(tmp); }
+
+        if (ok) ++copied;
+        else {
+            ++failed;
+            // 失败说明 U 盘大概率已拔出，停止后续拷贝
+            copyBar_->hide();
+            copyBar_->reset();
+            statusLabel_->setText(QStringLiteral(" 拷贝中断(U盘可能已拔出)：完成 %1，失败 %2")
+                                  .arg(copied).arg(failed));
+            statusLabel_->adjustSize();
+            return;
+        }
     }
 
     copyBar_->hide();
@@ -437,14 +464,68 @@ void MainWindow::refreshStatus() {
 
     // 录制状态回查：写失败时 MediaOutput 会静默关闭录制 sink，按钮需同步复位
     if (recording_ && !ctrl_->isRecording()) {
+        const bool wasUsb = recordToUsb_;
         recording_ = false;
-        recordToUsb_ = false;
         recordDir_.clear();
         recordFile_.clear();
         setRecordStyle(false);
-        statusLabel_->setText(QStringLiteral(" 录制已中断(存储写满或已拔出)"));
+        if (wasUsb) {
+            // U 盘接触不良：转入等待，稍后自动尝试续录
+            pendingResumeUsb_ = true;
+            ++resumeTimes_;
+            struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
+            nextResumeTryUs_ = (int64_t)ts.tv_sec * 1000000 + ts.tv_nsec / 1000 + 800000;
+            statusLabel_->setText(QStringLiteral(" U盘连接中断，等待恢复后自动续录..."));
+        } else {
+            statusLabel_->setText(QStringLiteral(" 录制已中断(存储写满或已拔出)"));
+        }
+        recordToUsb_ = false;
         statusLabel_->adjustSize();
         return;
+    }
+
+    // U 盘恢复后自动续录
+    if (!recording_ && pendingResumeUsb_) {
+        struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
+        int64_t now = (int64_t)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+        if (now >= nextResumeTryUs_) {
+            const QString usb = findUsbMount();
+            QStorageInfo si(usb);
+            if (!usb.isEmpty() && si.isReady()) {
+                if (startRecordingUi(true)) {
+                    pendingResumeUsb_ = false;
+                    statusLabel_->setText(QStringLiteral(" U盘已恢复，自动续录(#%1)").arg(resumeTimes_));
+                    statusLabel_->adjustSize();
+                    return;
+                }
+            }
+            nextResumeTryUs_ = now + 1000000;   // 1s 后重试
+        }
+    }
+
+    // HDMI 信号分辨率变化（源切换/接触不良抖动）：必须换文件，
+    // 否则同一文件里混入两种分辨率会导致播放器解析失败
+    if (recording_ && ctrl_->consumeResolutionChanged()) {
+        QString dir = recordDir_;
+        if (recordToUsb_) {
+            QString err;
+            QString d = usbRecordDir(&err);
+            if (d.isEmpty()) {
+                stopRecordingUi();
+                pendingResumeUsb_ = true;
+                statusLabel_->setText(QStringLiteral(" ") + err + QStringLiteral("，等待恢复"));
+                statusLabel_->adjustSize();
+                return;
+            }
+            dir = d;
+        }
+        QString fname = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss") + recordExt_;
+        if (ctrl_->rotateRecording((dir + QStringLiteral("/") + fname).toStdString())) {
+            recordFile_ = dir + QStringLiteral("/") + fname;
+            statusLabel_->setText(QStringLiteral(" 信号分辨率变化，已换新文件: ") + fname);
+            statusLabel_->adjustSize();
+            return;
+        }
     }
 
     // 单文件过大自动分段；存储余量不足时干净停止（保留写尾能力）
@@ -465,7 +546,8 @@ void MainWindow::refreshStatus() {
                 QString d = usbRecordDir(&err);
                 if (d.isEmpty()) {
                     stopRecordingUi();
-                    statusLabel_->setText(QStringLiteral(" ") + err + QStringLiteral("，已停止录制"));
+                    pendingResumeUsb_ = true;
+                    statusLabel_->setText(QStringLiteral(" ") + err + QStringLiteral("，等待恢复"));
                     statusLabel_->adjustSize();
                     return;
                 }

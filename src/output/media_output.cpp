@@ -111,46 +111,50 @@ void MediaOutput::pushToSink(Sink& s, const uint8_t* data, int size,
                              int64_t ptsUs, int64_t dtsUs, bool keyframe,
                              const AVCodecContext* encCtx) {
     if (!s.open.load()) return;
-
     AVPacket* pkt = av_packet_alloc();
     pkt->data = const_cast<uint8_t*>(data);
     pkt->size = size;
-    pkt->stream_index = s.st->index;
     if (keyframe) pkt->flags |= AV_PKT_FLAG_KEY;
-
-    // 时间戳：从编码器时间基(通常 1/1000000) 缩放到 muxer 实际的流 time_base。
-    // 注意：muxer 在 avformat_write_header 时可能改写 st->time_base（FLV/RTMP 为
-    // 1/1000），若不重缩放，微秒会被当成毫秒写入 -> 时间戳放大 1000 倍，
-    // 表现为录制时长异常（几秒显示几万秒）、播放器反复重载。
-    AVRational srcTb = encCtx ? encCtx->time_base : (AVRational){1, 1000000};
-    if (srcTb.num <= 0 || srcTb.den <= 0) srcTb = (AVRational){1, 1000000};
-    pkt->pts = ptsUs;
-    pkt->dts = dtsUs;
-    av_packet_rescale_ts(pkt, srcTb, s.st->time_base);
 
     {
         std::lock_guard<std::mutex> lock(s.mtx);
-        if (!s.open.load() || !s.fmt) {
+        // 注意：必须在锁内重新校验 s.st / s.fmt。
+        // U 盘可能在锁外被拔出，主线程 closeSink() 会把它们置空，
+        // 锁外解引用会造成空指针崩溃。
+        if (!s.open.load() || !s.fmt || !s.st) {
             av_packet_free(&pkt);
             return;
         }
+        pkt->stream_index = s.st->index;
+
+        // 时间戳：从编码器时间基(通常 1/1000000) 缩放到 muxer 实际的流 time_base。
+        // 注意：muxer 在 avformat_write_header 时可能改写 st->time_base（FLV/RTMP 为
+        // 1/1000），若不重缩放，微秒会被当成毫秒写入 -> 时间戳放大 1000 倍，
+        // 表现为录制时长异常（几秒显示几万秒）、播放器反复重载。
+        AVRational srcTb = encCtx ? encCtx->time_base : (AVRational){1, 1000000};
+        if (srcTb.num <= 0 || srcTb.den <= 0) srcTb = (AVRational){1, 1000000};
+        pkt->pts = ptsUs;
+        pkt->dts = dtsUs;
+        av_packet_rescale_ts(pkt, srcTb, s.st->time_base);
+
         int ret = av_interleaved_write_frame(s.fmt, pkt);
         if (ret < 0) {
             char eb[128];
             fprintf(stderr, "[output] interleave write failed: %s (已写 %.2f MB)\n",
                     errstr(ret, eb, sizeof(eb)), s.bytes.load() / (1024.0 * 1024.0));
-            // 网络断开/写盘失败时关闭对应 sink 但保留另一个
-            if (s.fmt) {
-                av_write_trailer(s.fmt);
-                if (s.fmt->pb) avio_closep(&s.fmt->pb);
-                avformat_free_context(s.fmt);
-                s.fmt = nullptr;
-                s.open = false;
-            }
+            // 网络断开/存储拔出时关闭对应 sink 但保留另一个。
+            // 注意：此时不应再调用 av_write_trailer（设备可能已失效），
+            // 直接关闭文件句柄即可；MKV 追加式容器不受影响，MP4 会缺索引。
+            av_write_trailer(s.fmt);
+            if (s.fmt->pb) avio_closep(&s.fmt->pb);
+            avformat_free_context(s.fmt);
+            s.fmt = nullptr;
+            s.st  = nullptr;
         } else {
             s.bytes.fetch_add(pkt->size);
         }
     }
+
     av_packet_free(&pkt);
 }
 

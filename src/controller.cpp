@@ -63,6 +63,7 @@ void Controller::onFrame(const VideoFrame& f) {
         if (encoder_->open(f.width, f.height, fps_, bitrate_, "h264_rkmpp")) {
             encoder_->setCallback([this](const EncodedPacket& p){ onPacket(p); });
             width_ = f.width; height_ = f.height;
+            resolutionChanged_ = true;
             fprintf(stderr, "[controller] encoder opened %dx%d\n", f.width, f.height);
         } else {
             fprintf(stderr, "[controller] encoder open failed %dx%d\n", f.width, f.height);
@@ -124,5 +125,9 @@ int Controller::captureHeight() const {
 bool Controller::isRecording() const { return output_->recording(); }
 bool Controller::isStreaming() const { return output_->streaming(); }
 uint64_t Controller::droppedFrames() const { return capture_->droppedFrames(); }
+
+bool Controller::consumeResolutionChanged() {
+    return resolutionChanged_.exchange(false);
+}
 
 } // namespace yunlu

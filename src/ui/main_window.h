@@ -69,6 +69,11 @@ private:
     bool recordToUsb_ = false;
     QString recordDir_;   // 当前录制目录（本地或U盘）
     QString recordFile_;
+
+    // U 盘接触不良自愈：录制被中断后等待 U 盘恢复并自动续录
+    bool pendingResumeUsb_ = false;
+    int64_t nextResumeTryUs_ = 0;
+    int resumeTimes_ = 0;
 };
 
 } // namespace yunlu

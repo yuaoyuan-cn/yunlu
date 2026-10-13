@@ -43,6 +43,10 @@ public:
 
     uint64_t droppedFrames() const;
     int64_t recorderBytes() const { return output_->recorderBytes(); }
+
+    // 采集到"编码器分辨率发生变化"（HDMI 信号分辨率改变/接触不良抖动）后返回 true，
+    // 用于让 UI 主动切换录制文件，避免同一文件混入两种分辨率而损坏
+    bool consumeResolutionChanged();
     int width() const { return width_; }
     int height() const { return height_; }
     double captureFps() const { return captureFps_; }
@@ -68,6 +72,8 @@ private:
     mutable std::mutex stateMutex_;
     bool hasSignal_ = false;
     int capW_ = 0, capH_ = 0;
+
+    std::atomic<bool> resolutionChanged_{false};
 };
 
 } // namespace yunlu
