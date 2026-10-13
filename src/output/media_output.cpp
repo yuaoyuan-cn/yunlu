@@ -86,6 +86,10 @@ bool MediaOutput::openSink(Sink& s, const std::string& url,
         s.startUs = 0;
         s.bytes = 0;
         s.path = url;
+        s.tsBased_  = false;
+        s.firstPtsUs = 0;
+        s.lastPtsUs  = -1;
+        s.lastDtsUs  = -1;
         s.open = true;
     }
     fprintf(stderr, "[output] opened %s (stream time_base=%d/%d)\n",
@@ -127,14 +131,26 @@ void MediaOutput::pushToSink(Sink& s, const uint8_t* data, int size,
         }
         pkt->stream_index = s.st->index;
 
-        // 时间戳：从编码器时间基(通常 1/1000000) 缩放到 muxer 实际的流 time_base。
-        // 注意：muxer 在 avformat_write_header 时可能改写 st->time_base（FLV/RTMP 为
-        // 1/1000），若不重缩放，微秒会被当成毫秒写入 -> 时间戳放大 1000 倍，
-        // 表现为录制时长异常（几秒显示几万秒）、播放器反复重载。
+        // 时间戳：以本文件/直播写入的第一个包为 0 点重新基准化。
+        // 采集侧的时间轴从 HDMI 信号锁定起算，直接写文件会让时长包含
+        // "录制开始前"的那段时间，导致进度条前段空白、时长比实际长。
+        if (!s.tsBased_) { s.firstPtsUs = ptsUs; s.tsBased_ = true; }
+        int64_t outPts = ptsUs - s.firstPtsUs;
+        int64_t outDts = dtsUs - s.firstPtsUs;
+        if (outPts < 0) outPts = 0;
+        if (outDts < 0) outDts = 0;
+        // 保证单调不回退（信号抖动/重锁时采集侧 PTS 可能倒退）
+        if (s.lastPtsUs >= 0 && outPts < s.lastPtsUs) outPts = s.lastPtsUs;
+        if (s.lastDtsUs >= 0 && outDts < s.lastDtsUs) outDts = s.lastDtsUs;
+        // dts 不得大于 pts
+        if (outDts > outPts) outDts = outPts;
+        s.lastPtsUs = outPts;
+        s.lastDtsUs = outDts;
+
         AVRational srcTb = encCtx ? encCtx->time_base : (AVRational){1, 1000000};
         if (srcTb.num <= 0 || srcTb.den <= 0) srcTb = (AVRational){1, 1000000};
-        pkt->pts = ptsUs;
-        pkt->dts = dtsUs;
+        pkt->pts = outPts;
+        pkt->dts = outDts;
         av_packet_rescale_ts(pkt, srcTb, s.st->time_base);
 
         int ret = av_interleaved_write_frame(s.fmt, pkt);

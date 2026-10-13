@@ -46,6 +46,14 @@ private:
         std::atomic<bool> open{false};
         std::atomic<int64_t> bytes{0};
         std::string path;
+
+        // 时间基准：以"写入该 sink 的第一个包"为 0 点，让每个文件/直播都从 0 秒开始。
+        // 否则容器时长会包含录制开始前的时间，表现为进度条前段空白、
+        // 时长比实际长、播放到不了结尾。
+        bool    tsBased_ = false;
+        int64_t firstPtsUs = 0;
+        int64_t lastPtsUs  = -1;
+        int64_t lastDtsUs  = -1;
     };
 
     Sink rec_, str_;

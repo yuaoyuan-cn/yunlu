@@ -235,7 +235,8 @@ bool HdmiCapture::startCapStream() {
     }
 
     frameCounter_ = 0;
-    basePtsUs_ = 0;
+    // 注意：不重置 basePtsUs_。信号重锁/接触不良抖动时若把时间基准清零，
+    // 时间戳会突然倒退几十秒，导致 MP4/MKV 内部时间轴错乱。
     reopenSeq_++;
     lastFlowLogUs_ = nowUs();
     framesThisWindow_ = 0;
@@ -419,7 +420,9 @@ void HdmiCapture::grabFrames(int timeoutMs) {
             fr.height = h;
             fr.linesize_y  = w;
             fr.linesize_uv = w;
-            if (frameCounter_ == 0) basePtsUs_ = nowUs();
+            if (frameCounter_ == 0) {
+                if (!ptsStarted_) { basePtsUs_ = nowUs(); ptsStarted_ = true; }
+            }
             fr.pts_us = nowUs() - basePtsUs_;
             frameCounter_++;
             onFrame_(fr);
@@ -547,6 +550,11 @@ void HdmiCapture::stop() {
     if (swsYuv_) { av_free(swsYuv_); swsYuv_ = nullptr; }
 
     if (fd_ >= 0) { ::close(fd_); fd_ = -1; }
+
+    // 会话结束，下次 start() 重新建立时间基准
+    ptsStarted_ = false;
+    frameCounter_ = 0;
+    basePtsUs_ = 0;
 }
 
 } // namespace yunlu

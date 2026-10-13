@@ -81,6 +81,7 @@ private:
 
     int64_t frameCounter_ = 0;
     int64_t basePtsUs_    = 0;
+    bool     ptsStarted_  = false;  // 时间基准是否已建立（只建立一次，不随重锁重置）
 
     // 调试：跟踪重连后的取帧是否恢复（用于排查"重连后预览冻结"）
     int64_t lastFlowLogUs_  = 0;
