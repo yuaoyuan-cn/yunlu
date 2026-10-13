@@ -397,7 +397,7 @@ void MainWindow::copyToUsb() {
         totalBytes += si.size();
     }
 
-    if (jobs.isEmpty()) {
+    if (jobs.empty()) {
         copyBar_->hide();
         copyBar_->reset();
         statusLabel_->setText(QStringLiteral(" 无新文件需要拷贝(跳过 %1 个)").arg(skipped));

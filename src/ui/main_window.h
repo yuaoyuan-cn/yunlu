@@ -29,6 +29,7 @@ protected:
 private slots:
     void toggleRecording();
     void toggleUsbRecording();
+    void toggleStreaming();
     void copyToUsb();
     void refreshStatus();
 
