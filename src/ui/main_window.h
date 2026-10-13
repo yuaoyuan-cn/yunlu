@@ -4,11 +4,13 @@
 #include <QMainWindow>
 #include <QTimer>
 #include <QString>
+#include <functional>
 
 #include "../controller.h"
 
 class QPushButton;
 class QLabel;
+class QProgressBar;
 class QKeyEvent;
 
 class VideoWidget;
@@ -26,7 +28,7 @@ protected:
 
 private slots:
     void toggleRecording();
-    void toggleStreaming();
+    void toggleUsbRecording();
     void copyToUsb();
     void refreshStatus();
 
@@ -34,15 +36,24 @@ private:
     void buildUi();
     void loadConfig();
     void setRecordStyle(bool recording);
+    QString findUsbMount();
+    QString usbRecordDir(QString* err);
+    QString currentRecordDir() const;
+    bool startRecordingUi(bool toUsb);
+    void stopRecordingUi();
+    bool copyFileWithProgress(const QString& src, const QString& dst,
+                              const std::function<void(qint64)>& onChunk);
 
     Controller* ctrl_;
     VideoWidget* video_ = nullptr;
 
     QTimer* statusTimer_ = nullptr;
     QLabel* statusLabel_ = nullptr;
+    QProgressBar* copyBar_ = nullptr;
 
     QPushButton* btnRec_  = nullptr;
     QPushButton* btnStream_ = nullptr;
+    QPushButton* btnUsbRec_ = nullptr;
     QPushButton* btnUsb_  = nullptr;
     QPushButton* btnQuit_ = nullptr;
 
@@ -55,8 +66,9 @@ private:
 
     bool recording_ = false;
     bool streaming_ = false;
-
-    QString recordFile_;   // 当前正在录制的文件名
+    bool recordToUsb_ = false;
+    QString recordDir_;   // 当前录制目录（本地或U盘）
+    QString recordFile_;
 };
 
 } // namespace yunlu
